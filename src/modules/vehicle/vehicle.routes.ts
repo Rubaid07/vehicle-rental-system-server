@@ -9,5 +9,6 @@ router.post("/", auth("admin"), vehicleControllers.createVehicle)
 
 router.get("/", vehicleControllers.getVehicles)
 router.get("/:vehicleId", vehicleControllers.getSingleVehicle)
+router.put("/:vehicleId", auth("admin"), vehicleControllers.updateVehicle)
 
 export const vehicleRoutes = router
