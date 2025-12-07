@@ -25,6 +25,9 @@ const getVehicles = async () => {
     return result.rows;
 }
 
+
+
 export const vehicleServices = {
-  createVehicle
+  createVehicle,
+  getVehicles
 }
