@@ -243,7 +243,186 @@ const getBookings = async (userId: number, userRole: string) => {
   }
 };
 
+const updateBooking = async (bookingId: string, payload: any, userId: number, userRole: string) => {
+  const { status } = payload;
+  
+  // check if status is valid
+  if (!status || (status !== 'cancelled' && status !== 'returned')) {
+    return {
+      success: false,
+      message: "Status must be 'cancelled' or 'returned'"
+    };
+  }
+  
+  const bookingQuery = await pool.query(
+    `SELECT * FROM bookings WHERE id = $1`,
+    [bookingId]
+  );
+  
+  // check if booking exist
+  if (bookingQuery.rows.length === 0) {
+    return {
+      success: false,
+      message: "Booking not found"
+    };
+  }
+  
+  const booking = bookingQuery.rows[0];
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    if (userRole === 'customer') {
+      // Customer can only cancel
+      if (status !== 'cancelled') {
+        await client.query('ROLLBACK');
+        client.release();
+        return {
+          success: false,
+          message: "Forbidden access"
+        };
+      }
+      
+      // Check- customers own booking
+      if (booking.customer_id !== userId) {
+        await client.query('ROLLBACK');
+        client.release();
+        return {
+          success: false,
+          message: "Forbidden",
+          errors: "You can only cancel your own bookings"
+        };
+      }
+      
+      // Check- if booking hasn't started yet
+      const startDate = new Date(booking.rent_start_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (startDate < today) {
+        await client.query('ROLLBACK');
+        client.release();
+        return {
+          success: false,
+          message: "Bad request",
+          errors: "Cannot cancel booking after start date"
+        };
+      }
+      
+      // update booking status to cancelled
+      await client.query(
+        `UPDATE bookings SET status = 'cancelled' WHERE id = $1`,
+        [bookingId]
+      );
+      
+      // Make vehicle available again
+      await client.query(
+        `UPDATE vehicles SET availability_status = 'available' WHERE id = $1`,
+        [booking.vehicle_id]
+      );
+      
+    } 
+
+    else if (userRole === 'admin') {
+      // Admin can only mark as returned
+      if (status !== 'returned') {
+        await client.query('ROLLBACK');
+        client.release();
+        return {
+          success: false,
+          message: "Forbidden",
+          errors: "Admin can only mark bookings as returned"
+        };
+      }
+      
+      // Update booking status to returned
+      await client.query(
+        `UPDATE bookings SET status = 'returned' WHERE id = $1`,
+        [bookingId]
+      );
+      
+      // Make vehicle available
+      await client.query(
+        `UPDATE vehicles SET availability_status = 'available' WHERE id = $1`,
+        [booking.vehicle_id]
+      );
+    }
+    
+    await client.query('COMMIT');
+    
+    const updatedQuery = await pool.query(
+      `SELECT 
+        b.id,
+        b.customer_id,
+        b.vehicle_id,
+        TO_CHAR(b.rent_start_date, 'YYYY-MM-DD') as rent_start_date,
+        TO_CHAR(b.rent_end_date, 'YYYY-MM-DD') as rent_end_date,
+        b.total_price::float,
+        b.status,
+        v.availability_status
+      FROM bookings b
+      JOIN vehicles v ON b.vehicle_id = v.id
+      WHERE b.id = $1`,
+      [bookingId]
+    );
+    
+    const updatedData = updatedQuery.rows[0];
+    client.release();
+    
+    // format response
+    if (status === 'cancelled') {
+      return {
+        success: true,
+        message: "Booking cancelled successfully",
+        data: {
+          id: updatedData.id,
+          customer_id: updatedData.customer_id,
+          vehicle_id: updatedData.vehicle_id,
+          rent_start_date: updatedData.rent_start_date,
+          rent_end_date: updatedData.rent_end_date,
+          total_price: updatedData.total_price,
+          status: updatedData.status
+        }
+      };
+    } else {
+      return {
+        success: true,
+        message: "Booking marked as returned. Vehicle is now available",
+        data: {
+          id: updatedData.id,
+          customer_id: updatedData.customer_id,
+          vehicle_id: updatedData.vehicle_id,
+          rent_start_date: updatedData.rent_start_date,
+          rent_end_date: updatedData.rent_end_date,
+          total_price: updatedData.total_price,
+          status: updatedData.status,
+          vehicle: {
+            availability_status: updatedData.availability_status
+          }
+        }
+      };
+    }
+    
+  } catch (error: any) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      
+    }
+    client.release();
+    
+    return {
+      success: false,
+      message: "Server error",
+      errors: error.message || "Failed to update booking"
+    };
+  }
+};
+
+
 export const bookingServices = {
   createBooking,
   getBookings,
+  updateBooking
 };
