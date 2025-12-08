@@ -36,7 +36,26 @@ const createBooking = async (req: Request, res: Response) => {
   }
 };
 
+const getBookings = async (req: Request, res: Response) => {
+  try {
+    const user = req.user;
+    const result = await bookingServices.getBookings(user?.id, user?.role);
+    
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    
+    res.status(200).json(result);
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      message: err.message || "Internal server error"
+    });
+  }
+};
+
 
 export const bookingControllers = {
   createBooking,
+  getBookings
 };

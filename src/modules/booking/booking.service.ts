@@ -138,6 +138,112 @@ const createBooking = async (payload: any) => {
   }
 };
 
+const getBookings = async (userId: number, userRole: string) => {
+  try {
+    let query = "";
+    const params: any[] = [];
+
+    if (userRole === "admin") {
+      // admin can see all booking
+      query = `
+        SELECT 
+          b.id,
+          b.customer_id,
+          b.vehicle_id,
+          TO_CHAR(b.rent_start_date, 'YYYY-MM-DD') as rent_start_date,
+          TO_CHAR(b.rent_end_date, 'YYYY-MM-DD') as rent_end_date,
+          b.total_price::float,
+          b.status,
+          b.created_at,
+          u.name as customer_name,
+          u.email as customer_email,
+          v.vehicle_name,
+          v.registration_number,
+          v.type
+        FROM bookings b
+        JOIN users u ON b.customer_id = u.id
+        JOIN vehicles v ON b.vehicle_id = v.id
+        ORDER BY b.created_at DESC
+      `;
+    } else {
+      // customer only
+      query = `
+        SELECT 
+          b.id,
+          b.vehicle_id,
+          TO_CHAR(b.rent_start_date, 'YYYY-MM-DD') as rent_start_date,
+          TO_CHAR(b.rent_end_date, 'YYYY-MM-DD') as rent_end_date,
+          b.total_price::float,
+          b.status,
+          v.vehicle_name,
+          v.registration_number,
+          v.type
+        FROM bookings b
+        JOIN vehicles v ON b.vehicle_id = v.id
+        WHERE b.customer_id = $1
+        ORDER BY b.id DESC
+      `;
+      params.push(userId);
+    }
+
+    const result = await pool.query(query, params);
+
+     let formatBooking = [];
+    
+    if (userRole === "admin") {
+      // Admin format
+      formatBooking = result.rows.map(row => ({
+        id: row.id,
+        customer_id: row.customer_id,
+        vehicle_id: row.vehicle_id,
+        rent_start_date: row.rent_start_date,
+        rent_end_date: row.rent_end_date,
+        total_price: row.total_price,
+        status: row.status,
+        customer: {
+          name: row.customer_name,
+          email: row.customer_email
+        },
+        vehicle: {
+          vehicle_name: row.vehicle_name,
+          registration_number: row.registration_number
+        }
+      }));
+    } else {
+      // Customer data format
+      formatBooking = result.rows.map(row => ({
+        id: row.id,
+        vehicle_id: row.vehicle_id,
+        rent_start_date: row.rent_start_date,
+        rent_end_date: row.rent_end_date,
+        total_price: row.total_price,
+        status: row.status,
+        vehicle: { 
+          vehicle_name: row.vehicle_name,
+          registration_number: row.registration_number,
+          type: row.type
+        }
+      }));
+    }
+
+    return {
+      success: true,
+      message: result.rows.length === 0 
+        ? "No bookings found" 
+        : (userRole === "admin" 
+            ? "Bookings retrieved successfully" 
+            : "Your bookings retrieved successfully"),
+      data: formatBooking
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+};
+
 export const bookingServices = {
   createBooking,
+  getBookings,
 };

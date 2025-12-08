@@ -37,6 +37,7 @@ const initDB = async () => {
         rent_end_date DATE NOT NULL,
         total_price DECIMAL(10,2) NOT NULL,
         status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'returned')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CHECK (rent_end_date > rent_start_date)
       )
     `);
