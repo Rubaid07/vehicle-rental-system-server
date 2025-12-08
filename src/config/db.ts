@@ -17,7 +17,7 @@ const initDB = async () => {
         )
         `);
 
-        await pool.query(`
+  await pool.query(`
           CREATE TABLE IF NOT EXISTS vehicles (
           id SERIAL PRIMARY KEY,
           vehicle_name VARCHAR(100) NOT NULL,
@@ -27,6 +27,19 @@ const initDB = async () => {
           availability_status VARCHAR(20) DEFAULT 'available' CHECK (availability_status IN ('available', 'booked'))
           )
           `);
+
+  await pool.query(`
+      CREATE TABLE IF NOT EXISTS bookings(
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+        rent_start_date DATE NOT NULL,
+        rent_end_date DATE NOT NULL,
+        total_price DECIMAL(10,2) NOT NULL,
+        status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'returned')),
+        CHECK (rent_end_date > rent_start_date)
+      )
+    `);
 };
 
 export default initDB;
